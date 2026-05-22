@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sistema de Relojes Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .tab_active { background-color: #0f172a; color: white; box-shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.3); }
+        .hide { display: none !important; }
+        input[type="datetime-local"] { appearance: none; }
+        #app_notification { pointer-events: none; z-index: 9999; }
+        .btn_save_glow { box-shadow: 0 0 20px rgba(37, 99, 235, 0.2); transition: all 0.3s ease; }
+        .btn_save_glow:hover { box-shadow: 0 0 25px rgba(37, 99, 235, 0.4); transform: scale(1.02); }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-900 pb-20 md:pb-8">
+    <div id="app_notification" class="fixed bottom-6 right-6 left-6 md:left-auto md:w-80 flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border transition-all duration-500 transform translate-y-32 opacity-0 text-sm font-bold"></div>
+
+    <div class="max-w-6xl mx-auto p-4 md:p-8">
+        <header class="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8 flex-1">
+                <div>
+                    <h1 class="text-3xl font-black text-slate-800 tracking-tight uppercase flex items-center gap-2">
+                        RELOJES <span id="cloud_status" class="w-3 h-3 bg-slate-300 rounded-full"></span>
+                    </h1>
+                    <p class="text-slate-500 font-medium text-xs">Sincronización en la Nube</p>
+                </div>
+
+                <button onclick="window.ui_manager.manual_cloud_save()" class="btn_save_glow flex items-center justify-center gap-3 bg-blue-600 text-white font-black py-3 px-6 rounded-2xl active:scale-[0.95] text-xs uppercase tracking-wider group w-full sm:w-auto">
+                    <i data-lucide="cloud-upload" class="w-5 h-5 group-hover:animate-bounce"></i>
+                    <span>Guardar cambios del día</span>
+                </button>
+            </div>
+            
+            <nav class="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200 overflow-x-auto snap-x scrollbar-hide">
+                <button onclick="window.ui_manager.switch_tab('inventory')" id="btn_inventory" class="tab_active flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all whitespace-nowrap snap-center">
+                    <i data-lucide="watch" class="w-5 h-5"></i><span class="font-bold text-sm">Stock</span>
+                </button>
+                <button onclick="window.ui_manager.switch_tab('sales')" id="btn_sales" class="flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all whitespace-nowrap text-slate-500 hover:bg-slate-50 snap-center">
+                    <i data-lucide="shopping-bag" class="w-5 h-5"></i><span class="font-bold text-sm">Ventas</span>
+                </button>
+                <button onclick="window.ui_manager.switch_tab('expenses')" id="btn_expenses" class="flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all whitespace-nowrap text-slate-500 hover:bg-slate-50 snap-center">
+                    <i data-lucide="arrow-down-circle" class="w-5 h-5"></i><span class="font-bold text-sm">Salidas</span>
+                </button>
+                <button onclick="window.ui_manager.switch_tab('reports')" id="btn_reports" class="flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all whitespace-nowrap text-slate-500 hover:bg-slate-50 snap-center">
+                    <i data-lucide="layout-dashboard" class="w-5 h-5"></i><span class="font-bold text-sm">Estadísticas</span>
+                </button>
+            </nav>
+        </header>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6">
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm col-span-2 lg:col-span-1">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Ventas Brutas</p>
+                <h3 id="stat_total_sales" class="text-2xl md:text-3xl font-black text-slate-800">$0.00</h3>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-orange-500">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Inv. Pendiente</p>
+                <h3 id="stat_pending_investment" class="text-xl md:text-2xl font-black text-slate-800">$0.00</h3>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-green-500">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Balance Neto</p>
+                <h3 id="stat_net_balance" class="text-xl md:text-2xl font-black text-green-600">$0.00</h3>
+            </div>
+            <div class="bg-slate-900 p-4 rounded-2xl shadow-xl text-white relative overflow-hidden col-span-2 lg:col-span-1">
+                <div class="relative z-10">
+                    <div class="flex items-center justify-between mb-1">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inv. Inicial</p>
+                        <button onclick="window.ui_manager.toggle_goal_edit()" class="text-slate-400 hover:text-white transition-colors p-1">
+                            <i data-lucide="edit-3" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <div id="goal_display">
+                        <h3 id="stat_initial_investment" class="text-2xl md:text-3xl font-black">$0.00</h3>
+                    </div>
+                    <div id="goal_edit" class="hide flex gap-2 mt-1">
+                        <input type="number" id="input_new_goal" class="bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 w-full text-white outline-none font-mono text-sm">
+                        <button onclick="window.ui_manager.save_new_goal()" class="bg-blue-600 px-3 rounded-lg font-bold text-xs">OK</button>
+                    </div>
+                    <div class="mt-4">
+                        <div class="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                            <div id="goal_progress_bar" class="h-full bg-orange-500 transition-all duration-1000" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <section class="lg:col-span-1 space-y-6" id="form_section_container">
+                <div class="bg-white p-5 md:p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <div class="flex items-center justify-between mb-5">
+                        <div class="flex items-center gap-2 text-slate-800">
+                            <div class="p-2 bg-slate-100 rounded-lg">
+                                <i data-lucide="plus" class="w-5 h-5 text-slate-700"></i>
+                            </div>
+                            <h2 id="form_title" class="text-lg font-black uppercase tracking-tighter">Inventario</h2>
+                        </div>
+                        <button id="btn_cancel_edit" onclick="window.ui_manager.cancel_edit()" class="hide text-xs font-bold text-red-500 uppercase tracking-wider bg-red-50 px-3 py-1 rounded-lg">Cancelar</button>
+                    </div>
+
+                    <div id="form_inventory">
+                        <form onsubmit="window.ui_manager.handle_inventory_submit(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-black text-slate-400 uppercase mb-1.5 pl-1">Modelo de Reloj</label>
+                                <input id="inv_model_name" name="model_name" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900 outline-none uppercase font-bold text-sm transition-all" placeholder="EJ: CARA NEGRA DORADO">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-400 uppercase mb-1.5 pl-1">Stock Actual</label>
+                                <input id="inv_stock_quantity" name="stock_quantity" type="number" min="0" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900 outline-none font-bold text-sm" placeholder="0">
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-black text-slate-400 uppercase mb-1.5 pl-1">Costo ($)</label>
+                                    <input id="inv_cost_price" name="cost_price" type="number" step="0.01" min="0" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900 outline-none font-mono text-sm" placeholder="8.00">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-black text-slate-400 uppercase mb-1.5 pl-1">Venta Sug.</label>
+                                    <input id="inv_sale_price" name="sale_price" type="number" step="0.01" min="0" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900 outline-none font-mono text-sm" placeholder="15.00">
+                                </div>
+                            </div>
+                            <button id="btn_submit_inventory" type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-xl transition-all active:scale-[0.98] shadow-lg shadow-slate-200 mt-2 uppercase tracking-wide text-sm">Guardar Cambios</button>
+                        </form>
+                    </div>
+
+                    <div id="form_sales" class="hide">
+                        <form onsubmit="window.ui_manager.handle_sale_submit(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-black text-slate-400 uppercase mb-1.5 pl-1">Fecha</label>
+                                <input type="datetime-local" name="transaction_date" id="sale_date_input" required class="w-full px-4 py-3 bg-orange-50 border border-orange-200 text-orange-900 rounded-xl focus:ring-2 focus:ring-slate-900 outline-none font-bold text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-400 uppercase mb-1.5 pl-1">Seleccionar Modelo</label>
+                                <select id="sale_select_model" name="sale_model" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900 outline-none font-bold text-xs uppercase"></select>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-xs font-black text-slate-400 uppercase mb-1.5 pl-1">Cantidad</label>
+                                    <input name="sale_quantity" type="number" min="1" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900 outline-none font-bold text-sm" placeholder="1">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-black text-slate-400 uppercase mb-1.5 pl-1">Precio Cobrado</label>
+                                    <input name="sale_price" type="number" step="0.01" min="0.01" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900 outline-none font-mono text-sm" placeholder="15.00">
+                                </div>
+                            </div>
+                            <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-xl transition-all active:scale-[0.98] shadow-lg shadow-slate-200 mt-2 uppercase tracking-wide text-sm">Registrar Venta</button>
+                        </form>
+                    </div>
+
+                    <div id="form_expenses" class="hide">
+                        <form onsubmit="window.ui_manager.handle_expense_submit(event)" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-black text-slate-400 uppercase mb-1.5 pl-1">Fecha del Gasto</label>
+                                <input type="datetime-local" name="transaction_date" id="expense_date_input" required class="w-full px-4 py-3 bg-orange-50 border border-orange-200 text-orange-900 rounded-xl focus:ring-2 focus:ring-slate-900 outline-none font-bold text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-400 uppercase mb-1.5 pl-1">Monto Retirado</label>
+                                <input name="expense_amount" type="number" step="0.01" min="0.01" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900 outline-none font-mono text-sm" placeholder="0.00">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black text-slate-400 uppercase mb-1.5 pl-1">Motivo</label>
+                                <textarea name="expense_description" required class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-slate-900 outline-none h-24 resize-none text-sm font-medium" placeholder="Escribe el motivo..."></textarea>
+                            </div>
+                            <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-xl transition-all active:scale-[0.98] shadow-lg shadow-slate-200 mt-2 uppercase tracking-wide text-sm">Guardar Salida</button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <section class="lg:col-span-2" id="table_section_container">
+                <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden min-h-[600px] flex flex-col">
+                    <div id="table_container" class="overflow-x-auto flex-1 p-2 md:p-0"></div>
+                </div>
+            </section>
+
+            <section class="lg:col-span-3 hide space-y-6" id="form_reports">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
+                        <div class="p-3 bg-blue-50 text-blue-600 rounded-full mb-3"><i data-lucide="package" class="w-6 h-6"></i></div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Volumen Total</p>
+                        <h3 id="rep_total_sold" class="text-3xl font-black text-slate-800"></h3>
+                    </div>
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
+                        <div class="p-3 bg-orange-50 text-orange-600 rounded-full mb-3"><i data-lucide="award" class="w-6 h-6"></i></div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Modelo Estrella</p>
+                        <h3 id="rep_best_seller" class="text-xl font-black text-slate-800 leading-tight uppercase truncate w-full px-4"></h3>
+                    </div>
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
+                        <div class="p-3 bg-green-50 text-green-600 rounded-full mb-3"><i data-lucide="check-circle-2" class="w-6 h-6"></i></div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Récord de Unidades</p>
+                        <h3 id="rep_best_seller_qty" class="text-3xl font-black text-slate-800"></h3>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
+                        <div class="p-3 bg-purple-50 text-purple-600 rounded-full mb-3"><i data-lucide="receipt" class="w-6 h-6"></i></div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Ticket Promedio</p>
+                        <h3 id="rep_avg_ticket" class="text-xl md:text-2xl font-black text-slate-800"></h3>
+                    </div>
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
+                        <div class="p-3 bg-slate-100 text-slate-600 rounded-full mb-3"><i data-lucide="archive" class="w-6 h-6"></i></div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Capital en Stock</p>
+                        <h3 id="rep_locked_capital" class="text-xl md:text-2xl font-black text-slate-800"></h3>
+                    </div>
+                    <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
+                        <div class="p-3 bg-emerald-50 text-emerald-600 rounded-full mb-3"><i data-lucide="trending-up" class="w-6 h-6"></i></div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Mayor Margen Neto</p>
+                        <h3 id="rep_highest_margin" class="text-sm md:text-base font-black text-slate-800 leading-tight uppercase truncate w-full px-2"></h3>
+                        <p id="rep_highest_margin_val" class="text-[10px] font-bold text-emerald-600 mt-1"></p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-5 md:p-8 rounded-3xl border border-slate-200 shadow-sm">
+                    <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider mb-6 flex items-center gap-2">
+                        <i data-lucide="zap" class="w-5 h-5 text-orange-500"></i> Modelos Más Rápidos en Venderse
+                    </h3>
+                    <div class="h-80 w-full relative">
+                        <canvas id="chart_top_sellers"></canvas>
+                    </div>
+                </div>
+
+                <button onclick="window.ui_manager.export_data()" class="w-full flex items-center justify-center gap-3 bg-slate-900 text-white font-black py-4 rounded-xl transition-all active:scale-[0.98] text-sm uppercase shadow-lg shadow-slate-200 hover:bg-slate-800">
+                    <i data-lucide="download" class="w-5 h-5"></i> Exportar Base de Datos Local
+                </button>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        class Node {
+            constructor(data) {
+                this._data = data;
+                this._next = null;
+            }
+            get data() { return this._data; }
+            set data(value) { this._data = value; }
+            get next() { return this._next; }
+            set next(value) { this._next = value; }
+        }
+
+        class LinkedList {
+            constructor() {
+                this._head = null;
+            }
+            insert_or_update(item, key_field) {
+                if (!this._head) {
+                    this._head = new Node(item);
+                    return;
+                }
+                let current_node = this._head;
+                while (current_node) {
+                    if (current_node.data[key_field] === item[key_field]) {
+                        current_node.data = item;
+                        return;
+                    }
+                    if (!current_node.next) {
+                        current_node.next = new Node(item);
+                        return;
+                    }
+                    current_node = current_node.next;
+                }
+            }
+            to_array() {
+                const elements_array = [];
+                let current_node = this._head;
+                while (current_node) {
+                    elements_array.push(current_node.data);
+                    current_node = current_node.next;
+                }
+                return elements_array;
+            }
+            find_by_key(value, key_field) {
+                let current_node = this._head;
+                while (current_node) {
+                    if (current_node.data[key_field] === value) return current_node.data;
+                    current_node = current_node.next;
+                }
+                return null;
+            }
+        }
+
+        class GenericQueue {
+            constructor() {
+                this._front = null;
+                this._rear = null;
+            }
+            enqueue(item) {
+                const new_node = new Node(item);
+                if (!this._rear) {
+                    this._front = this._rear = new_node;
+                    return;
+                }
+                this._rear.next = new_node;
+                this._rear = new_node;
+            }
+            to_array() {
+                const elements_array = [];
+                let current_node = this._front;
+                while (current_node) {
+                    elements_array.unshift(current_node.data);
+                    current_node = current_node.next;
+                }
+                return elements_array;
+            }
+        }
+
+        class WatchProduct {
+            constructor(model_name, stock_quantity, cost_price, sale_price, last_restock_date) {
+                this.model_name = model_name.trim().toUpperCase();
+                this.stock_quantity = Math.max(0, stock_quantity);
+                this.cost_price = Math.max(0, cost_price);
+                this.sale_price = Math.max(0, sale_price);
+                this.last_restock_date = last_restock_date || new Date().toISOString();
+            }
+            to_plain_object() {
+                return {
+                    model_name: this.model_name,
+                    stock_quantity: this.stock_quantity,
+                    cost_price: this.cost_price,
+                    sale_price: this.sale_price,
+                    last_restock_date: this.last_restock_date
+                };
+            }
+        }
+
+        class ModelMetric {
+            constructor(model_name) {
+                this._model_name = model_name;
+                this._total_sold_quantity = 0;
+                this._total_profit_generated = 0;
+                this._total_days_tracked = 0;
+                this._sales_with_tracking = 0;
+            }
+            get model_name() { return this._model_name; }
+            get total_sold_quantity() { return this._total_sold_quantity; }
+            set total_sold_quantity(value) { this._total_sold_quantity = value; }
+            get total_profit_generated() { return this._total_profit_generated; }
+            set total_profit_generated(value) { this._total_profit_generated = value; }
+            get total_days_tracked() { return this._total_days_tracked; }
+            set total_days_tracked(value) { this._total_days_tracked = value; }
+            get sales_with_tracking() { return this._sales_with_tracking; }
+            set sales_with_tracking(value) { this._sales_with_tracking = value; }
+        }
+
+        class BusinessLogic {
+            constructor() {
+                this._inventory = new LinkedList();
+                this._sales = new GenericQueue();
+                this._expenses = new GenericQueue();
+                this._initial_investment = 0;
+            }
+            get inventory() { return this._inventory; }
+            get sales() { return this._sales; }
+            get expenses() { return this._expenses; }
+            get initial_investment() { return this._initial_investment; }
+            set initial_investment(value) { this._initial_investment = value; }
+
+            get_plain_data() {
+                return {
+                    inventory: this._inventory.to_array(),
+                    sales: this._sales.to_array().reverse(),
+                    expenses: this._expenses.to_array().reverse(),
+                    initial_investment: this._initial_investment
+                };
+            }
+
+            save_to_local() {
+                const plain_data = this.get_plain_data();
+                localStorage.setItem('watch_manager_data', JSON.stringify(plain_data));
+                if(window.cloud_manager) window.cloud_manager.sync_up(plain_data);
+            }
+
+            load_from_local() {
+                const stored_data_string = localStorage.getItem('watch_manager_data');
+                if (stored_data_string) {
+                    this.populate_from_plain_data(JSON.parse(stored_data_string));
+                }
+            }
+
+            populate_from_plain_data(parsed_data) {
+                let needs_sync = false;
+                this._inventory = new LinkedList();
+                this._sales = new GenericQueue();
+                this._expenses = new GenericQueue();
+
+                let genesis_timestamp = Date.now();
+                if (parsed_data.sales && parsed_data.sales.length > 0) {
+                    let min_time = Date.now();
+                    for (let i = 0; i < parsed_data.sales.length; i++) {
+                        const current_time = new Date(parsed_data.sales[i].timestamp).getTime();
+                        if (current_time < min_time) {
+                            min_time = current_time;
+                        }
+                    }
+                    genesis_timestamp = min_time - (3 * 24 * 3600 * 1000);
+                }
+
+                if (parsed_data.inventory) {
+                    parsed_data.inventory.forEach(item => {
+                        if (item.cost_price === 0) { item.cost_price = 8; needs_sync = true; }
+                        if (item.sale_price === 0) { item.sale_price = 15; needs_sync = true; }
+                        if (!item.last_restock_date) { 
+                            item.last_restock_date = new Date(genesis_timestamp).toISOString(); 
+                            needs_sync = true; 
+                        }
+                        this._inventory.insert_or_update(item, 'model_name');
+                    });
+                }
+                
+                if (parsed_data.initial_investment === undefined || parsed_data.initial_investment === 0) {
+                    this._initial_investment = 208;
+                    needs_sync = true;
+                } else {
+                    this._initial_investment = parsed_data.initial_investment;
+                }
+
+                if (parsed_data.sales) {
+                    parsed_data.sales.forEach(sale => {
+                        if (sale.total_cost === undefined || sale.total_cost === 0) {
+                            sale.total_cost = sale.quantity * 8;
+                            sale.profit = sale.total_sale - sale.total_cost;
+                            needs_sync = true;
+                        }
+                        if (sale.days_to_sell === undefined || sale.days_to_sell === null) {
+                            const sale_time = new Date(sale.timestamp).getTime();
+                            const days_diff = (sale_time - genesis_timestamp) / (1000 * 3600 * 24);
+                            sale.days_to_sell = Math.max(1, days_diff);
+                            needs_sync = true;
+                        }
+                        this._sales.enqueue(sale);
+                    });
+                }
+                if (parsed_data.expenses) {
+                    parsed_data.expenses.forEach(expense => this._expenses.enqueue(expense));
+                }
+                return needs_sync;
+            }
+
+            calculate_statistics() {
+                const sales_array = this._sales.to_array();
+                const expenses_array = this._expenses.to_array();
+                
+                const total_sales_amount = sales_array.reduce((acc, s) => acc + s.total_sale, 0);
+                const total_capital_recovered = sales_array.reduce((acc, s) => acc + s.total_cost, 0);
+                const total_gross_profit = sales_array.reduce((acc, s) => acc + s.profit, 0);
+                
+                const total_net_expenses = expenses_array.reduce((acc, e) => e.is_reintegro ? acc - e.amount : acc + e.amount, 0);
+                
+                return {
+                    total_sales_amount,
+                    total_capital_recovered,
+                    total_gross_profit,
+                    total_net_expenses,
+                    pending_investment: Math.max(this._initial_investment - total_capital_recovered, 0),
+                    net_balance: total_gross_profit - total_net_expenses,
+                    progress_percentage: this._initial_investment > 0 ? Math.min((total_capital_recovered / this._initial_investment) * 100, 100) : 0
+                };
+            }
+
+            get_raw_model_metrics() {
+                const aggregated_metrics = new LinkedList();
+                const sales_history = this._sales.to_array();
+                
+                for (let i = 0; i < sales_history.length; i++) {
+                    const sale_record = sales_history[i];
+                    let metric_data = aggregated_metrics.find_by_key(sale_record.model_name, 'model_name');
+                    
+                    if (!metric_data) {
+                        metric_data = new ModelMetric(sale_record.model_name);
+                    }
+                    
+                    metric_data.total_sold_quantity += sale_record.quantity;
+                    metric_data.total_profit_generated += sale_record.profit;
+
+                    if (sale_record.days_to_sell !== undefined && sale_record.days_to_sell !== null) {
+                        metric_data.total_days_tracked += (sale_record.days_to_sell * sale_record.quantity);
+                        metric_data.sales_with_tracking += sale_record.quantity;
+                    }
+
+                    aggregated_metrics.insert_or_update(metric_data, 'model_name');
+                }
+                return aggregated_metrics.to_array();
+            }
+
+            calculate_advanced_business_metrics() {
+                const sales_array = this._sales.to_array();
+                const inv_array = this._inventory.to_array();
+
+                let total_sales_amount = 0;
+                for (let i = 0; i < sales_array.length; i++) {
+                    total_sales_amount += sales_array[i].total_sale;
+                }
+                const average_ticket = sales_array.length > 0 ? (total_sales_amount / sales_array.length) : 0;
+
+                let locked_capital = 0;
+                let highest_margin_model = "N/A";
+                let highest_margin_value = 0;
+
+                for (let j = 0; j < inv_array.length; j++) {
+                    const item = inv_array[j];
+                    locked_capital += (item.stock_quantity * item.cost_price);
+                    
+                    const margin = item.sale_price - item.cost_price;
+                    if (margin > highest_margin_value) {
+                        highest_margin_value = margin;
+                        highest_margin_model = item.model_name;
+                    }
+                }
+
+                return {
+                    average_ticket,
+                    locked_capital,
+                    highest_margin_model,
+                    highest_margin_value
+                };
+            }
+        }
+
+        class DashboardManager {
+            constructor() {
+                this._instances = {};
+                Chart.defaults.font.family = "'Inter', sans-serif";
+                Chart.defaults.color = '#64748b';
+            }
+
+            destroy_chart(chart_id) {
+                if (this._instances[chart_id]) {
+                    this._instances[chart_id].destroy();
+                }
+            }
+
+            render_fastest_sellers_chart(canvas_id, models_data) {
+                this.destroy_chart(canvas_id);
+                const ctx = document.getElementById(canvas_id);
+                if (!ctx) return;
+
+                const valid_models = models_data.filter(m => m.sales_with_tracking > 0);
+                valid_models.forEach(m => m.avg_days = m.total_days_tracked / m.sales_with_tracking);
+                
+                const filtered = valid_models.sort((a,b) => a.avg_days - b.avg_days).slice(0, 7);
+                const labels = filtered.map(m => m.model_name);
+                const data = filtered.map(m => m.avg_days);
+
+                this._instances[canvas_id] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{ label: 'Días promedio en stock', data: data, backgroundColor: '#f59e0b', borderRadius: 6 }]
+                    },
+                    options: { 
+                        indexAxis: 'y',
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        plugins: { legend: { display: false } },
+                        scales: { 
+                            x: { beginAtZero: true, grid: { borderDash: [4, 4] } }, 
+                            y: { grid: { display: false }, ticks: { font: { size: 10, weight: 'bold' } } } 
+                        }
+                    }
+                });
+            }
+        }
+
+        class CloudSyncManager {
+            constructor() {
+                this.master_key = '$2a$10$sMoRA2lgCvXGcOF9Wra/w.yEs71AC9oegEb57cz6ucFSu1XJQVWQC';
+                this.bin_id = '69c70966c3097a1dd569f0ba'; 
+                this.update_status_indicator('idle');
+            }
+
+            update_status_indicator(status) {
+                const indicator = document.getElementById('cloud_status');
+                indicator.className = 'w-3 h-3 rounded-full transition-all';
+                if (status === 'syncing') indicator.classList.add('bg-yellow-400', 'animate-pulse');
+                else if (status === 'success') indicator.classList.add('bg-green-500');
+                else if (status === 'error') indicator.classList.add('bg-red-500');
+                else indicator.classList.add('bg-slate-300');
+            }
+
+            async sync_up(data, is_manual = false) {
+                try {
+                    this.update_status_indicator('syncing');
+                    const response = await fetch(`https://api.jsonbin.io/v3/b/${this.bin_id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', 'X-Master-Key': this.master_key },
+                        body: JSON.stringify(data)
+                    });
+                    if (!response.ok) throw new Error("Sync failed");
+                    this.update_status_indicator('success');
+                    if (is_manual) window.ui_manager.show_notification("Trabajo sincronizado correctamente", "success");
+                } catch (error) {
+                    this.update_status_indicator('error');
+                    if (is_manual) window.ui_manager.show_notification("Error de red: No se pudo guardar", "error");
+                }
+            }
+
+            async sync_down() {
+                try {
+                    this.update_status_indicator('syncing');
+                    const response = await fetch(`https://api.jsonbin.io/v3/b/${this.bin_id}/latest`, {
+                        headers: { 'X-Master-Key': this.master_key }
+                    });
+                    const result = await response.json();
+                    if (result.record) {
+                        const needs_sync = window.app_core.populate_from_plain_data(result.record);
+                        localStorage.setItem('watch_manager_data', JSON.stringify(result.record));
+                        window.ui_manager.render_interface();
+                        this.update_status_indicator('success');
+                        if (needs_sync) window.app_core.save_to_local();
+                    }
+                } catch (error) {
+                    this.update_status_indicator('error');
+                    window.app_core.load_from_local();
+                    window.ui_manager.render_interface();
+                }
+            }
+        }
+
+        window.app_core = new BusinessLogic();
+        window.cloud_manager = new CloudSyncManager();
+        window.dashboard_manager = new DashboardManager();
+
+        window.ui_manager = {
+            _current_active_tab: 'inventory',
+            _is_editing_inventory: false,
+
+            switch_tab(tab_name) {
+                this._current_active_tab = tab_name;
+                document.querySelectorAll('nav button').forEach(el => {
+                    el.classList.remove('tab_active');
+                    el.classList.add('text-slate-500', 'hover:bg-slate-50');
+                });
+                document.getElementById(`btn_${tab_name}`).classList.add('tab_active');
+                
+                ['inventory', 'sales', 'expenses'].forEach(id => document.getElementById(`form_${id}`).classList.add('hide'));
+                
+                if (tab_name === 'reports') {
+                    document.getElementById('form_section_container').classList.add('hide');
+                    document.getElementById('table_section_container').classList.add('hide');
+                    document.getElementById('form_reports').classList.remove('hide');
+                } else {
+                    document.getElementById('form_reports').classList.add('hide');
+                    document.getElementById('form_section_container').classList.remove('hide');
+                    document.getElementById('table_section_container').classList.remove('hide');
+                    document.getElementById(`form_${tab_name}`).classList.remove('hide');
+                }
+
+                if (tab_name === 'sales') document.getElementById('sale_date_input').value = this.get_now_string();
+                if (tab_name === 'expenses') document.getElementById('expense_date_input').value = this.get_now_string();
+
+                if(tab_name !== 'inventory' && this._is_editing_inventory) {
+                    this.cancel_edit();
+                }
+
+                this.render_interface();
+            },
+
+            get_now_string() {
+                const now = new Date();
+                now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                return now.toISOString().slice(0, 16);
+            },
+
+            show_notification(message, type = 'success') {
+                const el = document.getElementById('app_notification');
+                el.innerText = message;
+                el.className = `fixed bottom-6 right-6 left-6 md:left-auto md:w-80 flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border text-sm font-bold transition-all duration-500 transform translate-y-0 opacity-100 ${type === 'success' ? 'bg-slate-900 border-slate-700 text-white' : 'bg-red-600 border-red-800 text-white'}`;
+                
+                setTimeout(() => {
+                    el.classList.remove('translate-y-0', 'opacity-100');
+                    el.classList.add('translate-y-32', 'opacity-0');
+                }, 5000);
+            },
+
+            edit_inventory_item(name) {
+                const prod = window.app_core.inventory.find_by_key(name, 'model_name');
+                if(!prod) return;
+                this.switch_tab('inventory');
+                this._is_editing_inventory = true;
+                document.getElementById('inv_model_name').value = prod.model_name;
+                document.getElementById('inv_model_name').readOnly = true;
+                document.getElementById('inv_stock_quantity').value = prod.stock_quantity;
+                document.getElementById('inv_cost_price').value = prod.cost_price;
+                document.getElementById('inv_sale_price').value = prod.sale_price;
+                document.getElementById('btn_submit_inventory').innerText = "Actualizar Stock";
+                document.getElementById('btn_cancel_edit').classList.remove('hide');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            },
+
+            cancel_edit() {
+                this._is_editing_inventory = false;
+                document.getElementById('form_inventory').querySelector('form').reset();
+                document.getElementById('inv_model_name').readOnly = false;
+                document.getElementById('btn_submit_inventory').innerText = "Guardar Modelo";
+                document.getElementById('btn_cancel_edit').classList.add('hide');
+            },
+
+            handle_inventory_submit(e) {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const model_name = fd.get('model_name');
+                const new_qty = parseInt(fd.get('stock_quantity'));
+                const cost = parseFloat(fd.get('cost_price'));
+                const sale = parseFloat(fd.get('sale_price'));
+
+                let existing_prod = window.app_core.inventory.find_by_key(model_name.trim().toUpperCase(), 'model_name');
+                let restock_date = new Date().toISOString();
+
+                if (existing_prod && new_qty <= existing_prod.stock_quantity) {
+                    restock_date = existing_prod.last_restock_date || restock_date;
+                }
+
+                const prod = new WatchProduct(model_name, new_qty, cost, sale, restock_date);
+                window.app_core.inventory.insert_or_update(prod.to_plain_object(), 'model_name');
+                window.app_core.save_to_local();
+                this.show_notification("Inventario actualizado", "success");
+                this.cancel_edit();
+                this.render_interface();
+            },
+
+            handle_sale_submit(e) {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const model = fd.get('sale_model');
+                const qty = parseInt(fd.get('sale_quantity'));
+                const price = parseFloat(fd.get('sale_price'));
+                const date = fd.get('transaction_date');
+
+                const prod = window.app_core.inventory.find_by_key(model, 'model_name');
+                if (!prod || prod.stock_quantity < qty) return this.show_notification("Stock insuficiente", "error");
+
+                prod.stock_quantity -= qty;
+
+                let days_to_sell = null;
+                if (prod.last_restock_date) {
+                    const t1 = new Date(prod.last_restock_date).getTime();
+                    const t2 = new Date(date).getTime();
+                    days_to_sell = Math.max(0, (t2 - t1) / (1000 * 3600 * 24));
+                }
+
+                const record = { id: Date.now(), timestamp: date, model_name: model, quantity: qty, total_sale: qty * price, total_cost: qty * prod.cost_price, profit: (qty * price) - (qty * prod.cost_price), days_to_sell: days_to_sell };
+                window.app_core.sales.enqueue(record);
+                window.app_core.save_to_local();
+                this.show_notification("Venta procesada con éxito", "success");
+                this.render_interface();
+            },
+
+            handle_expense_submit(e) {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const record = { id: Date.now(), timestamp: fd.get('transaction_date'), amount: parseFloat(fd.get('expense_amount')), description: fd.get('expense_description'), is_reintegro: false };
+                window.app_core.expenses.enqueue(record);
+                window.app_core.save_to_local();
+                this.show_notification("Gasto registrado en la nube", "success");
+                this.render_interface();
+            },
+
+            process_reintegro(id) {
+                const exp = window.app_core.expenses.to_array().find(e => e.id === id);
+                if (!exp || exp.is_reintegro) return;
+                const record = { id: Date.now(), timestamp: this.get_now_string(), amount: exp.amount, description: `REINTEGRO: ${exp.description}`, is_reintegro: true };
+                window.app_core.expenses.enqueue(record);
+                window.app_core.save_to_local();
+                this.show_notification("Dinero devuelto a caja", "success");
+                this.render_interface();
+            },
+
+            toggle_goal_edit() {
+                document.getElementById('goal_display').classList.toggle('hide');
+                document.getElementById('goal_edit').classList.toggle('hide');
+                document.getElementById('input_new_goal').value = window.app_core.initial_investment;
+            },
+
+            save_new_goal() {
+                window.app_core.initial_investment = parseFloat(document.getElementById('input_new_goal').value) || 0;
+                window.app_core.save_to_local();
+                this.toggle_goal_edit();
+                this.render_interface();
+            },
+
+            manual_cloud_save() {
+                window.cloud_manager.sync_up(window.app_core.get_plain_data(), true);
+            },
+
+            export_data() {
+                const blob = new Blob([JSON.stringify(window.app_core.get_plain_data(), null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `backup_relojes_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+            },
+
+            render_interface() {
+                const stats = window.app_core.calculate_statistics();
+                document.getElementById('stat_total_sales').innerText = `$${stats.total_sales_amount.toFixed(2)}`;
+                document.getElementById('stat_pending_investment').innerText = `$${stats.pending_investment.toFixed(2)}`;
+                document.getElementById('stat_net_balance').innerText = `$${stats.net_balance.toFixed(2)}`;
+                document.getElementById('stat_initial_investment').innerText = `$${window.app_core.initial_investment.toFixed(2)}`;
+                document.getElementById('goal_progress_bar').style.width = `${stats.progress_percentage}%`;
+                
+                if (this._current_active_tab === 'reports') {
+                    const models_data = window.app_core.get_raw_model_metrics();
+                    
+                    const sorted_models_by_volume = models_data.filter(m => m.total_sold_quantity > 0).sort((a,b) => b.total_sold_quantity - a.total_sold_quantity);
+                    let total_sold_all = 0;
+                    for (let i = 0; i < sorted_models_by_volume.length; i++) {
+                        total_sold_all += sorted_models_by_volume[i].total_sold_quantity;
+                    }
+
+                    const best_seller = sorted_models_by_volume.length > 0 ? sorted_models_by_volume[0].model_name : 'N/A';
+                    const max_sold = sorted_models_by_volume.length > 0 ? sorted_models_by_volume[0].total_sold_quantity : 0;
+
+                    document.getElementById('rep_total_sold').innerText = total_sold_all;
+                    document.getElementById('rep_best_seller').innerText = best_seller;
+                    document.getElementById('rep_best_seller_qty').innerText = max_sold;
+
+                    const biz_metrics = window.app_core.calculate_advanced_business_metrics();
+                    document.getElementById('rep_avg_ticket').innerText = `$${biz_metrics.average_ticket.toFixed(2)}`;
+                    document.getElementById('rep_locked_capital').innerText = `$${biz_metrics.locked_capital.toFixed(2)}`;
+                    document.getElementById('rep_highest_margin').innerText = biz_metrics.highest_margin_model;
+                    document.getElementById('rep_highest_margin_val').innerText = biz_metrics.highest_margin_model !== 'N/A' ? `+$${biz_metrics.highest_margin_value.toFixed(2)} por unidad` : '';
+
+                    window.dashboard_manager.render_fastest_sellers_chart('chart_top_sellers', models_data);
+                }
+
+                const sel = document.getElementById('sale_select_model');
+                const inv = window.app_core.inventory.to_array().sort((a,b) => a.model_name.localeCompare(b.model_name));
+                sel.innerHTML = '<option value="">Seleccionar...</option>';
+                inv.forEach(i => { if (i.stock_quantity > 0) sel.innerHTML += `<option value="${i.model_name}">${i.model_name} (${i.stock_quantity})</option>`; });
+
+                const container = document.getElementById('table_container');
+                if (this._current_active_tab === 'inventory') {
+                    let html = `<table class="w-full text-left min-w-[450px]"><thead class="bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="px-5 py-4">Modelo</th><th class="px-5 py-4 text-center">Stock</th><th class="px-5 py-4">Costo/Venta</th><th class="px-5 py-4 text-right">Recaudado Est.</th></tr></thead><tbody class="divide-y divide-slate-100">`;
+                    inv.forEach(i => {
+                        html += `<tr class="hover:bg-slate-50"><td class="px-5 py-4 font-black text-slate-800 text-xs uppercase leading-tight">${i.model_name}</td><td class="px-5 py-4 text-center"><span class="px-2.5 py-1 rounded-lg text-xs font-black ${i.stock_quantity <= 1 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'}">${i.stock_quantity}</span></td><td class="px-5 py-4 font-mono text-xs"><div class="text-slate-400">$${i.cost_price.toFixed(2)}</div><div class="font-bold text-slate-800">$${i.sale_price.toFixed(2)}</div></td><td class="px-5 py-4 text-right flex items-center justify-end gap-2 h-full"><div class="font-black text-green-600 font-mono text-sm mr-2">$${((i.sale_price - i.cost_price) * i.stock_quantity).toFixed(2)}</div><button onclick="window.ui_manager.edit_inventory_item('${i.model_name}')" class="text-blue-600 bg-blue-50 p-2 rounded-xl font-bold text-[10px] uppercase tracking-wider active:scale-95 transition-all"><i data-lucide="edit-2" class="w-3 h-3"></i></button></td></tr>`;
+                    });
+                    container.innerHTML = html + `</tbody></table>`;
+                } else if (this._current_active_tab === 'sales') {
+                    const sls = window.app_core.sales.to_array();
+                    let html = `<table class="w-full text-left min-w-[450px]"><thead class="bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="px-5 py-4">Fecha</th><th class="px-5 py-4">Ítem</th><th class="px-5 py-4">Cobro</th><th class="px-5 py-4 text-right">Ganancia</th></tr></thead><tbody class="divide-y divide-slate-100">`;
+                    sls.forEach(s => {
+                        const d = new Date(s.timestamp);
+                        const fmt = d.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' });
+                        html += `<tr><td class="px-5 py-4 text-[10px] font-bold text-slate-400 leading-none">${fmt}</td><td class="px-5 py-4 font-black text-xs uppercase leading-tight">${s.model_name} <span class="text-slate-400">x${s.quantity}</span></td><td class="px-5 py-4 font-mono text-xs font-bold">$${s.total_sale.toFixed(2)}</td><td class="px-5 py-4 text-right font-black text-green-600 font-mono text-sm">+$${s.profit.toFixed(2)}</td></tr>`;
+                    });
+                    container.innerHTML = html + `</tbody></table>`;
+                } else if (this._current_active_tab === 'expenses') {
+                    const exps = window.app_core.expenses.to_array();
+                    let html = `<table class="w-full text-left min-w-[450px]"><thead class="bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th class="px-5 py-4">Fecha</th><th class="px-5 py-4">Motivo</th><th class="px-5 py-4">Monto</th><th class="px-5 py-4 text-right"></th></tr></thead><tbody class="divide-y divide-slate-100">`;
+                    exps.forEach(e => {
+                        const d = new Date(e.timestamp);
+                        const fmt = d.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute:'2-digit' });
+                        html += `<tr class="${e.is_reintegro ? 'bg-green-50/40' : ''}"><td class="px-5 py-4 text-[10px] font-bold text-slate-400">${fmt}</td><td class="px-5 py-4 text-xs font-bold text-slate-700 leading-tight">${e.description}</td><td class="px-5 py-4 font-black font-mono text-sm ${e.is_reintegro ? 'text-green-600' : 'text-red-500'}">${e.is_reintegro ? '+' : '-'}$${e.amount.toFixed(2)}</td><td class="px-5 py-4 text-right">${!e.is_reintegro ? `<button onclick="window.ui_manager.process_reintegro(${e.id})" class="text-green-600 bg-green-50 p-2 rounded-xl font-bold text-[10px] uppercase flex items-center gap-1 ml-auto active:scale-95"><i data-lucide="undo-2" class="w-3 h-3"></i></button>` : ''}</td></tr>`;
+                    });
+                    container.innerHTML = html + `</tbody></table>`;
+                }
+                lucide.createIcons();
+            }
+        };
+
+        window.onload = () => {
+            window.cloud_manager.sync_down();
+            lucide.createIcons();
+        };
+    </script>
+</body>
+</html>
